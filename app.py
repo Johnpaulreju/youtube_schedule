@@ -25,23 +25,26 @@ SCOPES = [
 def get_authenticated_service():
     credentials = None
     CLIENT_SECRET_PATH = "/etc/secrets/client_secret.json"
-    TOKEN_PATH = "/tmp/token.json"
-
-    if os.path.exists(TOKEN_PATH):
+    TOKEN_PATH = "/etc/secrets/token.json"  # Read the initial token from secrets
+    REFRESH_TOKEN_PATH = "/tmp/refreshed_token.json"  # Write refreshed token here
+    
+    # First try to use the refreshed token if it exists
+    if os.path.exists(REFRESH_TOKEN_PATH):
+        credentials = Credentials.from_authorized_user_file(REFRESH_TOKEN_PATH, SCOPES)
+    # Otherwise use the initial token from secrets
+    elif os.path.exists(TOKEN_PATH):
         credentials = Credentials.from_authorized_user_file(TOKEN_PATH, SCOPES)
-
-    if not credentials or not credentials.valid:
-        if credentials and credentials.expired and credentials.refresh_token:
-            credentials.refresh(Request())
-        else:
-            flow = InstalledAppFlow.from_client_secrets_file(CLIENT_SECRET_PATH, SCOPES)
-            # credentials = flow.run_local_server(port=8080)
-            credentials = flow.run_local_server(port=8080)
-
-
-        with open(TOKEN_PATH, 'w') as token:
+    
+    # If we have credentials but they're expired, refresh them
+    if credentials and credentials.expired and credentials.refresh_token:
+        credentials.refresh(Request())
+        # Save the refreshed token to the writable location
+        with open(REFRESH_TOKEN_PATH, 'w') as token:
             token.write(credentials.to_json())
-
+    # If we have no credentials at all, we can't proceed on the server
+    elif not credentials or not credentials.valid:
+        raise Exception("No valid credentials available. Upload a valid token.json to the secrets directory.")
+        
     return build('youtube', 'v3', credentials=credentials)
 
 
@@ -54,11 +57,14 @@ def download_video(url, filename="video.mp4"):
         'noprogress': True,
         'quiet': True,
         'cookies': '/etc/secrets/cookies.txt',
-        'sleep-requests': 5,  # Wait 5s between requests
-        'retries': 5,  # Retry 5 times before failing
-        'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',  # Mimic a browser
-
+        'sleep-requests': 10,      # Increased from 5 to 10
+        'retries': 10,             # Increased from 5 to 10
+        'max-sleep-interval': 30,  # Add maximum sleep interval
+        'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36',
+        'nocheckcertificate': True
     }
+    
+    # Rest of your function stays the same
 
     try:
         if os.path.exists(filename):
