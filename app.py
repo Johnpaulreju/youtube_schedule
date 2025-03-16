@@ -22,18 +22,24 @@ SCOPES = [
 
 def get_authenticated_service():
     credentials = None
-    token_file = 'token.json'
-    if os.path.exists(token_file):
-        credentials = Credentials.from_authorized_user_file(token_file, SCOPES)
+    CLIENT_SECRET_PATH = "/etc/secrets/client_secret.json"
+    TOKEN_PATH = "/etc/secrets/token.json"
+
+    if os.path.exists(TOKEN_PATH):
+        credentials = Credentials.from_authorized_user_file(TOKEN_PATH, SCOPES)
+
     if not credentials or not credentials.valid:
         if credentials and credentials.expired and credentials.refresh_token:
             credentials.refresh(Request())
         else:
-            flow = InstalledAppFlow.from_client_secrets_file('client_secret.json', SCOPES)
+            flow = InstalledAppFlow.from_client_secrets_file(CLIENT_SECRET_PATH, SCOPES)
             credentials = flow.run_local_server(port=8080)
-        with open(token_file, 'w') as token:
+
+        with open(TOKEN_PATH, 'w') as token:
             token.write(credentials.to_json())
+
     return build('youtube', 'v3', credentials=credentials)
+
 
 
 def download_video(url, filename="video.mp4"):
