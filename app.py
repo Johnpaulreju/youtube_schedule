@@ -363,8 +363,10 @@ def download_video(url, filename="video.mp4"):
         'quiet': False,
         'cookiefile': netscape_cookies_path if cookies_exists else None,
         # Rate limiting avoidance
-        'sleep_interval': 5,          # Sleep 5 seconds between requests
-        'max_sleep_interval': 30,     # Maximum sleep time
+        'sleep_interval': 10,
+        'max_sleep_interval': 60,
+        'limit_rate': '1M',  # 1MB/s limit
+
         'sleep_interval_requests': 2, # Sleep between every 2 requests
         'writesubtitles': False,      # Reduce number of requests
         'writeautomaticsub': False,   # Reduce number of requests
@@ -374,7 +376,7 @@ def download_video(url, filename="video.mp4"):
         'extractor_retries': 10,      # Retry on extractor errors
         # Advanced options
         'socket_timeout': 30,         # Longer timeout
-        'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36',
+        'user-agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1',
         'http_headers': {             # More browser-like headers
             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
             'Accept-Language': 'en-us,en;q=0.5',
