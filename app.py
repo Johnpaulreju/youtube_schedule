@@ -51,8 +51,8 @@ def download_video(url, filename="video.mp4"):
         'merge_output_format': 'mp4',
         'noprogress': True,
         'quiet': True,
-        # 'cookies': '/etc/secrets/cookies.txt',
-        'cookies-from-browser': 'chrome'
+        'cookies': '/etc/secrets/cookies.txt'
+        # 'cookies-from-browser': 'chrome'
     }
 
     try:
