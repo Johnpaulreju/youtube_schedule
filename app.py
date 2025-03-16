@@ -25,7 +25,7 @@ SCOPES = [
 def get_authenticated_service():
     credentials = None
     CLIENT_SECRET_PATH = "/etc/secrets/client_secret.json"
-    TOKEN_PATH = "/etc/secrets/token.json"
+    TOKEN_PATH = "/tmp/token.json"
 
     if os.path.exists(TOKEN_PATH):
         credentials = Credentials.from_authorized_user_file(TOKEN_PATH, SCOPES)
