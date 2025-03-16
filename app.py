@@ -36,7 +36,7 @@ def get_authenticated_service():
         else:
             flow = InstalledAppFlow.from_client_secrets_file(CLIENT_SECRET_PATH, SCOPES)
             # credentials = flow.run_local_server(port=8080)
-            credentials = flow.run_console()  # ✅ Use console authentication instead of browser
+            credentials = flow.run_local_server(port=8080)
 
 
         with open(TOKEN_PATH, 'w') as token:
@@ -53,8 +53,11 @@ def download_video(url, filename="video.mp4"):
         'merge_output_format': 'mp4',
         'noprogress': True,
         'quiet': True,
-        'cookies': '/etc/secrets/cookies.txt'
-        # 'cookies-from-browser': 'chrome'
+        'cookies': '/etc/secrets/cookies.txt',
+        'sleep-requests': 5,  # Wait 5s between requests
+        'retries': 5,  # Retry 5 times before failing
+        'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',  # Mimic a browser
+
     }
 
     try:
