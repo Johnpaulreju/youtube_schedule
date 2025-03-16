@@ -349,72 +349,96 @@ def download_video(url, filename="video.mp4"):
                 print("Failed to convert cookies")
         except Exception as e:
             print(f"Error processing cookies: {e}")
-            # Continue without cookies as fallback
     
     # Check if cookies file exists
     cookies_exists = os.path.exists(netscape_cookies_path)
     print(f"Cookies file exists: {cookies_exists}")
     
-    cookies_file_option = None
-    if cookies_exists:
-        # Verify cookies file is valid
-        try:
-            with open(netscape_cookies_path, 'r') as f:
-                first_line = f.readline().strip()
-                if "Netscape HTTP Cookie File" in first_line:
-                    cookies_file_option = netscape_cookies_path
-                    cookies_size = os.path.getsize(netscape_cookies_path)
-                    print(f"Valid cookies file found, size: {cookies_size} bytes")
-                else:
-                    print("Invalid cookies file format, will download without cookies")
-        except Exception as e:
-            print(f"Error reading cookies file: {e}")
-    
+    # YouTube specific options to help avoid rate limiting
     ydl_opts = {
         'format': 'bestvideo[height<=720]+bestaudio/best[height<=720]',
         'outtmpl': filename,
         'merge_output_format': 'mp4',
         'noprogress': True,
-        'quiet': False,  # Set to False to see detailed logs
-        'cookiefile': cookies_file_option,  # Only use if valid
-        'sleep-requests': 15,
-        'retries': 15,
-        'max-sleep-interval': 60,
+        'quiet': False,
+        'cookiefile': netscape_cookies_path if cookies_exists else None,
+        # Rate limiting avoidance
+        'sleep_interval': 5,          # Sleep 5 seconds between requests
+        'max_sleep_interval': 30,     # Maximum sleep time
+        'sleep_interval_requests': 2, # Sleep between every 2 requests
+        'writesubtitles': False,      # Reduce number of requests
+        'writeautomaticsub': False,   # Reduce number of requests
+        'skip_download': False,
+        'retries': 10,                # Retry failed requests 10 times
+        'fragment_retries': 10,       # Retry failed fragments 10 times
+        'extractor_retries': 10,      # Retry on extractor errors
+        # Advanced options
+        'socket_timeout': 30,         # Longer timeout
         'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36',
+        'http_headers': {             # More browser-like headers
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'Accept-Language': 'en-us,en;q=0.5',
+            'Sec-Fetch-Mode': 'navigate',
+            'Sec-Fetch-Site': 'none',
+            'Sec-Fetch-User': '?1',
+            'Sec-Fetch-Dest': 'document',
+            'Accept-Encoding': 'gzip, deflate, br',
+            'Connection': 'keep-alive',
+            'Upgrade-Insecure-Requests': '1',
+            'Referer': 'https://www.youtube.com/'
+        },
         'nocheckcertificate': True,
-        'ignore-errors': True,
-        'geo-bypass': True
+        'ignoreerrors': True,
+        'geo_bypass': True,
+        'geo_bypass_country': 'US'    # Try to appear as US traffic
     }
+
+    # Try different methods to download
+    methods_to_try = [
+        {"cookiefile": netscape_cookies_path if cookies_exists else None, "note": "with cookies"},
+        {"cookiefile": None, "note": "without cookies"},
+        {"cookiefile": netscape_cookies_path if cookies_exists else None, 
+         "user-agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 16_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1", 
+         "note": "with mobile user agent"},
+        {"cookiefile": netscape_cookies_path if cookies_exists else None, 
+         "format": "best[height<=480]", 
+         "note": "with lower quality"}
+    ]
     
-    try:
-        if os.path.exists(filename):
-            os.remove(filename)
-        
-        print(f"Starting download for URL: {url}")
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            try:
+    if os.path.exists(filename):
+        os.remove(filename)
+    
+    for i, method in enumerate(methods_to_try):
+        try:
+            current_opts = ydl_opts.copy()
+            # Update options with the current method
+            for key, value in method.items():
+                if key != "note":
+                    current_opts[key] = value
+            
+            print(f"Attempt {i+1}: Trying download {method['note']}")
+            
+            # Add a short delay between attempts to avoid rate limiting
+            if i > 0:
+                print(f"Waiting 20 seconds before next attempt...")
+                import time
+                time.sleep(20)
+            
+            with yt_dlp.YoutubeDL(current_opts) as ydl:
+                print(f"Starting download for URL: {url}")
                 info = ydl.extract_info(url, download=True)
+                
                 if info:
-                    print(f"Successfully extracted info for: {info.get('title', 'Unknown')}")
-                    return filename, info.get('title', 'Unknown Title')
-                else:
-                    print("Failed to extract video info")
-                    return None, None
-            except yt_dlp.utils.DownloadError as e:
-                # Try once more without cookies if cookies might be the problem
-                if cookies_file_option and "cookie" in str(e).lower():
-                    print("Cookie error detected, trying download without cookies...")
-                    ydl_opts['cookiefile'] = None
-                    with yt_dlp.YoutubeDL(ydl_opts) as ydl_no_cookies:
-                        info = ydl_no_cookies.extract_info(url, download=True)
-                        if info:
-                            print(f"Successfully downloaded without cookies: {info.get('title', 'Unknown')}")
-                            return filename, info.get('title', 'Unknown Title')
-                raise  # Re-raise if fallback failed
+                    title = info.get('title', 'Unknown Title')
+                    print(f"Successfully downloaded: {title}")
+                    return filename, title
+                
+        except Exception as e:
+            print(f"Attempt {i+1} failed: {e}")
+            continue
     
-    except Exception as e:
-        print(f"Error downloading video: {e}")
-        return None, None
+    print("All download attempts failed")
+    return None, None
 
 
 def upload_video(filename, title, description="", tags=None, category_id="22", 
