@@ -10,6 +10,8 @@ import pytz
 import os
 from tqdm import tqdm
 from flask_cors import CORS
+import os
+
 
 app = Flask(__name__)
 CORS(app)
@@ -48,13 +50,22 @@ def download_video(url, filename="video.mp4"):
         'outtmpl': filename,
         'merge_output_format': 'mp4',
         'noprogress': True,
-        'quiet': True
+        'quiet': True,
+        'cookies': '/etc/secrets/cookies.txt'
     }
-    if os.path.exists(filename):
-        os.remove(filename)
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        info = ydl.extract_info(url, download=True)
-    return filename, info['title']
+
+    try:
+        if os.path.exists(filename):
+            os.remove(filename)
+        
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=True)
+            return filename, info.get('title', 'Unknown Title')
+    
+    except Exception as e:
+        print(f"Error downloading video: {e}")
+        return None, None  # Return None if download fails
+
 
 
 def upload_video(filename, title, description="", tags=None, category_id="22", 
@@ -130,5 +141,8 @@ def delete_video():
         return jsonify({"error": str(e)}), 500
 
 
+# if __name__ == '__main__':
+#     app.run(debug=True, port=8000, host='0.0.0.0')
 if __name__ == '__main__':
-    app.run(debug=True, port=8000, host='0.0.0.0')
+    port = int(os.environ.get("PORT", 8000))  # Use Render's provided port
+    app.run(debug=True, host='0.0.0.0', port=port)
