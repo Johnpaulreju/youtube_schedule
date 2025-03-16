@@ -295,7 +295,25 @@ def convert_json_cookies_to_netscape(json_cookies, output_path):
             # Process each cookie
             for cookie in cookies:
                 domain = cookie.get('domain', '')
-                flag = 'TRUE' if cookie.get('hostOnly', False) else 'FALSE'
+                
+                # Fix for domain format: add a dot prefix for non-hostOnly cookies
+                # This is what's causing the assertion error
+                if domain.startswith('.'):
+                    initial_dot = True
+                    # Domain already has the dot prefix
+                else:
+                    initial_dot = False
+                    # For domains without dot prefix, check if it's hostOnly
+                    if not cookie.get('hostOnly', False):
+                        domain = '.' + domain
+                
+                # hostOnly flag is inverted in Netscape format
+                flag = 'FALSE' if cookie.get('hostOnly', False) else 'TRUE'
+                
+                # Ensure flag is consistent with domain format
+                if initial_dot:
+                    flag = 'TRUE'  # domain_specified should be TRUE for domains with initial dot
+                
                 path = cookie.get('path', '/')
                 secure = 'TRUE' if cookie.get('secure', False) else 'FALSE'
                 expiration = str(int(cookie.get('expirationDate', 0)))
@@ -318,7 +336,7 @@ def download_video(url, filename="video.mp4"):
     netscape_cookies_path = "/tmp/cookies.txt"
     
     # Convert JSON cookies to Netscape format if needed
-    if os.path.exists(json_cookies_path) and not os.path.exists(netscape_cookies_path):
+    if os.path.exists(json_cookies_path):
         try:
             with open(json_cookies_path, 'r') as f:
                 json_cookies = f.read()
@@ -331,20 +349,24 @@ def download_video(url, filename="video.mp4"):
                 print("Failed to convert cookies")
         except Exception as e:
             print(f"Error processing cookies: {e}")
+            # Continue without cookies as fallback
     
     # Check if cookies file exists
     cookies_exists = os.path.exists(netscape_cookies_path)
     print(f"Cookies file exists: {cookies_exists}")
+    
+    cookies_file_option = None
     if cookies_exists:
-        # Check file size
-        cookies_size = os.path.getsize(netscape_cookies_path)
-        print(f"Cookies file size: {cookies_size} bytes")
-        
-        # Check if file is readable
+        # Verify cookies file is valid
         try:
             with open(netscape_cookies_path, 'r') as f:
-                cookie_content = f.read(100)  # Read first 100 chars
-                print(f"Cookies file preview: {cookie_content[:50]}...")
+                first_line = f.readline().strip()
+                if "Netscape HTTP Cookie File" in first_line:
+                    cookies_file_option = netscape_cookies_path
+                    cookies_size = os.path.getsize(netscape_cookies_path)
+                    print(f"Valid cookies file found, size: {cookies_size} bytes")
+                else:
+                    print("Invalid cookies file format, will download without cookies")
         except Exception as e:
             print(f"Error reading cookies file: {e}")
     
@@ -354,7 +376,7 @@ def download_video(url, filename="video.mp4"):
         'merge_output_format': 'mp4',
         'noprogress': True,
         'quiet': False,  # Set to False to see detailed logs
-        'cookiefile': netscape_cookies_path if os.path.exists(netscape_cookies_path) else None,
+        'cookiefile': cookies_file_option,  # Only use if valid
         'sleep-requests': 15,
         'retries': 15,
         'max-sleep-interval': 60,
@@ -370,13 +392,25 @@ def download_video(url, filename="video.mp4"):
         
         print(f"Starting download for URL: {url}")
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=True)
-            if info:
-                print(f"Successfully extracted info for: {info.get('title', 'Unknown')}")
-                return filename, info.get('title', 'Unknown Title')
-            else:
-                print("Failed to extract video info")
-                return None, None
+            try:
+                info = ydl.extract_info(url, download=True)
+                if info:
+                    print(f"Successfully extracted info for: {info.get('title', 'Unknown')}")
+                    return filename, info.get('title', 'Unknown Title')
+                else:
+                    print("Failed to extract video info")
+                    return None, None
+            except yt_dlp.utils.DownloadError as e:
+                # Try once more without cookies if cookies might be the problem
+                if cookies_file_option and "cookie" in str(e).lower():
+                    print("Cookie error detected, trying download without cookies...")
+                    ydl_opts['cookiefile'] = None
+                    with yt_dlp.YoutubeDL(ydl_opts) as ydl_no_cookies:
+                        info = ydl_no_cookies.extract_info(url, download=True)
+                        if info:
+                            print(f"Successfully downloaded without cookies: {info.get('title', 'Unknown')}")
+                            return filename, info.get('title', 'Unknown Title')
+                raise  # Re-raise if fallback failed
     
     except Exception as e:
         print(f"Error downloading video: {e}")
@@ -418,34 +452,55 @@ def upload_video(filename, title, description="", tags=None, category_id="22",
 
 @app.route('/schedule', methods=['POST'])
 def schedule_upload():
-    data = request.json
-    url = data.get("url")
-    schedule_time = data.get("schedule_time")
-
-    if not url:
-        return jsonify({"error": "URL is required"}), 400
-
-    # Try to download the video
-    filename, title = download_video(url)
-    
-    # Check if download was successful
-    if filename is None or title is None:
-        return jsonify({
-            "error": "Failed to download video. YouTube might be rate-limiting requests or the cookies are invalid.",
-            "details": "Check your cookies file and ensure it has valid YouTube authentication."
-        }), 500
-
-    utc_time = None
-    if schedule_time:
-        local_tz = pytz.timezone("Asia/Kolkata")
-        local_time = local_tz.localize(datetime.strptime(schedule_time, "%Y-%m-%d %H:%M"))
-        utc_time = local_time.astimezone(pytz.utc)
-
     try:
-        video_id = upload_video(filename, title, schedule_time=utc_time)
-        return jsonify({"message": "Upload scheduled", "video_id": video_id})
+        data = request.json
+        url = data.get("url")
+        schedule_time = data.get("schedule_time")
+
+        if not url:
+            return jsonify({"error": "URL is required"}), 400
+
+        # Try to download the video
+        print(f"Attempting to download: {url}")
+        filename, title = download_video(url)
+        
+        # Check if download was successful
+        if filename is None or title is None:
+            return jsonify({
+                "error": "Failed to download video",
+                "details": "YouTube might be rate-limiting requests or the video is unavailable. Check your cookies file and ensure it has valid YouTube authentication."
+            }), 500
+
+        utc_time = None
+        if schedule_time:
+            try:
+                local_tz = pytz.timezone("Asia/Kolkata")
+                local_time = local_tz.localize(datetime.strptime(schedule_time, "%Y-%m-%d %H:%M"))
+                utc_time = local_time.astimezone(pytz.utc)
+            except Exception as e:
+                return jsonify({"error": f"Invalid schedule time format: {str(e)}"}), 400
+
+        try:
+            video_id = upload_video(filename, title, schedule_time=utc_time)
+            
+            # Clean up the downloaded file
+            try:
+                if os.path.exists(filename):
+                    os.remove(filename)
+            except:
+                pass  # Ignore cleanup errors
+                
+            return jsonify({
+                "message": "Upload successful", 
+                "video_id": video_id,
+                "title": title,
+                "scheduled_time": schedule_time
+            })
+        except Exception as e:
+            return jsonify({"error": f"Upload failed: {str(e)}"}), 500
+            
     except Exception as e:
-        return jsonify({"error": f"Upload failed: {str(e)}"}), 500
+        return jsonify({"error": f"Server error: {str(e)}"}), 500
 
 
 @app.route('/delete', methods=['POST'])
