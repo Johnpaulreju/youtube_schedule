@@ -166,3 +166,4 @@ yt-dlp==2025.2.19
 zipp==3.21.0
 zstandard==0.23.0
 gunicorn
+jsonlib
