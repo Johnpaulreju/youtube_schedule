@@ -35,7 +35,9 @@ def get_authenticated_service():
             credentials.refresh(Request())
         else:
             flow = InstalledAppFlow.from_client_secrets_file(CLIENT_SECRET_PATH, SCOPES)
-            credentials = flow.run_local_server(port=8080)
+            # credentials = flow.run_local_server(port=8080)
+            credentials = flow.run_console()  # ✅ Use console authentication instead of browser
+
 
         with open(TOKEN_PATH, 'w') as token:
             token.write(credentials.to_json())
